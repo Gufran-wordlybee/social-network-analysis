@@ -4,7 +4,7 @@ import networkx as nx
 import xgi
 import numpy as np
 import matplotlib.pyplot as plt
-
+import os
 # ── Load Facebook dataset ─────────────────────────────────────────
 # After downloading facebook_combined.txt.gz from SNAP, place it in data/
 G = nx.read_edgelist("data/facebook_combined.txt", 
@@ -18,6 +18,7 @@ print(f"Triangles: {sum(nx.triangles(G).values()) // 3}")  # ~1.6M triangles
 sub = G.subgraph(list(G.nodes())[:100])
 nx.draw(sub, node_size=20, edge_color='gray', alpha=0.5)
 plt.title("Facebook subgraph (100 nodes)")
+os.makedirs("output", exist_ok=True)
 plt.savefig("output/facebook_subgraph.png", dpi=150)
 plt.show()
-print("Setup complete ✓")
+print("Setup complete")
