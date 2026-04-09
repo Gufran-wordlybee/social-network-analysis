@@ -1,57 +1,57 @@
-# phase1_baseline.py
-# Goal: Replicate Paper 1 — ICM + 3 seed methods + Nash Equilibrium
+# phase1_baseline.py — FIXED VERSION
+# Replicate Paper 1: Two firms compete via ICM, Nash Equilibrium at ~0.5
 
 import networkx as nx
 import numpy as np
 import random
 from collections import defaultdict
 import matplotlib.pyplot as plt
+import os
 
-# ── Load Graph ─────────────────────────────────────────────────────
+os.makedirs("output", exist_ok=True)
+
 G = nx.read_edgelist("data/facebook_combined.txt",
                      create_using=nx.Graph(), nodetype=int)
 N = G.number_of_nodes()
+print(f"Graph loaded: {N} nodes, {G.number_of_edges()} edges")
 
 # ══════════════════════════════════════════════════════════════════
-# STEP 1: Three Seed Selection Methods (exactly as in Paper 1)
+# SEED SELECTION — KEY FIX: firms get DIFFERENT seeds
+# exclude param ensures Firm 2 never picks Firm 1's seed
 # ══════════════════════════════════════════════════════════════════
 
-"""DC — pick node with highest degree"""
-"""EC — pick node most connected to other high-degree nodes"""
-"""RD — sample nodes, rank by degree within sample"""
-def seed_by_degree_centrality(G, budget=1, offset=0):
+def seed_by_degree_centrality(G, budget=1, exclude=None):
+    exclude = set(exclude) if exclude else set()
     dc = nx.degree_centrality(G)
-    ranked = sorted(dc, key=dc.get, reverse=True)
-    return ranked[offset : offset + budget]
+    ranked = [n for n in sorted(dc, key=dc.get, reverse=True)
+              if n not in exclude]
+    return ranked[:budget]
 
-def seed_by_eigenvector_centrality(G, budget=1, offset=0):
+def seed_by_eigenvector_centrality(G, budget=1, exclude=None):
+    exclude = set(exclude) if exclude else set()
     try:
         ec = nx.eigenvector_centrality(G, max_iter=1000)
-    except nx.PowerIterationFailedConvergence:
+    except:
         ec = nx.degree_centrality(G)
-    ranked = sorted(ec, key=ec.get, reverse=True)
-    return ranked[offset : offset + budget]
+    ranked = [n for n in sorted(ec, key=ec.get, reverse=True)
+              if n not in exclude]
+    return ranked[:budget]
 
-def seed_by_rank_degree(G, budget=1, offset=0, sample_size=200):
-    sample = random.sample(list(G.nodes()), min(sample_size, N))
+def seed_by_rank_degree(G, budget=1, exclude=None, sample_size=200):
+    exclude = set(exclude) if exclude else set()
+    sample = [n for n in random.sample(list(G.nodes()),
+              min(sample_size, N)) if n not in exclude]
     degrees = {n: G.degree(n) for n in sample}
-    ranked = sorted(degrees, key=degrees.get, reverse=True)
-    return ranked[offset : offset + budget]
+    return sorted(degrees, key=degrees.get, reverse=True)[:budget]
+
 # ══════════════════════════════════════════════════════════════════
-# STEP 2: Independent Cascade Model — Pairwise (Paper 1 original)
+# PAIRWISE ICM — Paper 1 original spreading model
 # ══════════════════════════════════════════════════════════════════
 
 def run_icm_pairwise(G, seeds_firm1, seeds_firm2,
                      lambda1=0.1, lambda2=0.1, num_runs=50):
-    """
-    Two firms spread simultaneously via ICM.
-    Returns: (fraction_informed_1, fraction_informed_2,
-               fraction_supporter_1, fraction_supporter_2)
-    """
     total = defaultdict(float)
-
     for _ in range(num_runs):
-        # States: 0=uninformed, 1=firm1, 2=firm2, 3=both
         state = {n: 0 for n in G.nodes()}
         for s in seeds_firm1: state[s] = 1
         for s in seeds_firm2: state[s] = 2
@@ -59,65 +59,29 @@ def run_icm_pairwise(G, seeds_firm1, seeds_firm2,
         active1 = list(seeds_firm1)
         active2 = list(seeds_firm2)
 
-        for level in range(20):
-            new_active1, new_active2 = [], []
-
+        for _ in range(30):
+            new1, new2 = [], []
             for node in active1:
-                for neighbor in G.neighbors(node):
-                    if state[neighbor] == 0:
-                        if random.random() < lambda1:
-                            state[neighbor] = 1
-                            new_active1.append(neighbor)
-
+                for nbr in G.neighbors(node):
+                    if state[nbr] == 0 and random.random() < lambda1:
+                        state[nbr] = 1
+                        new1.append(nbr)
             for node in active2:
-                for neighbor in G.neighbors(node):
-                    if state[neighbor] == 0:
-                        if random.random() < lambda2:
-                            state[neighbor] = 2
-                            new_active2.append(neighbor)
-
-            active1, active2 = new_active1, new_active2
+                for nbr in G.neighbors(node):
+                    if state[nbr] == 0 and random.random() < lambda2:
+                        state[nbr] = 2
+                        new2.append(nbr)
+            active1, active2 = new1, new2
             if not active1 and not active2:
                 break
 
-        # Count results
-        informed1 = sum(1 for s in state.values() if s in [1, 3]) / N
-        informed2 = sum(1 for s in state.values() if s in [2, 3]) / N
+        total['s1'] += sum(1 for s in state.values() if s == 1) / N
+        total['s2'] += sum(1 for s in state.values() if s == 2) / N
 
-        # Supporter = node informed by ONLY one firm (higher influence wins)
-        support1 = sum(1 for s in state.values() if s == 1) / N
-        support2 = sum(1 for s in state.values() if s == 2) / N
-
-        total['i1'] += informed1
-        total['i2'] += informed2
-        total['s1'] += support1
-        total['s2'] += support2
-
-    return {k: v/num_runs for k, v in total.items()}
+    return {k: v / num_runs for k, v in total.items()}
 
 # ══════════════════════════════════════════════════════════════════
-# STEP 3: Game Theory — Compute Nash Equilibrium
-# ══════════════════════════════════════════════════════════════════
-
-def compute_position(supporter_fraction):
-    """Convert supporter fraction to Hotelling position (0 to 1)"""
-    return supporter_fraction / 2.0
-
-def best_response(x_opponent):
-    """
-    Hotelling best response:
-    If opponent is at x, best response is 1 - x (mirror).
-    Nash Equilibrium = both at 0.5
-    """
-    if x_opponent > 0.5:
-        return 1 - x_opponent
-    elif x_opponent < 0.5:
-        return 1 - x_opponent
-    else:
-        return 0.5
-
-# ══════════════════════════════════════════════════════════════════
-# STEP 4: Run Full Experiment (Paper 1 replica)
+# RUN EXPERIMENT
 # ══════════════════════════════════════════════════════════════════
 
 methods = {
@@ -126,48 +90,42 @@ methods = {
     'RD': seed_by_rank_degree
 }
 
+MARGIN = 0.05
 results = {}
-print("Running baseline experiment (Paper 1 replica)...")
-def seed_by_degree_centrality(G, budget=1, offset=0): #give firm 2 the 2nd-ranked node
-    dc = nx.degree_centrality(G)
-    ranked = sorted(dc, key=dc.get, reverse=True)
-    return ranked[offset : offset + budget]
+print(f"\n{'Method':<6} {'Firm1':>8} {'Firm2':>8} {'|F1-F2|':>10} {'Nash Eq?':>12}")
+print("-" * 50)
 
-for method_name, method_fn in methods.items():
-    seed1 = method_fn(G, budget=1)
-    seed2 = method_fn(G, budget=1, offset=1)      # Both firms use same method
-    
-    res = run_icm_pairwise(G, seed1, seed2, num_runs=30)
-    
-    pos1 = compute_position(res['s1'])
-    pos2 = compute_position(res['s2'])
-    nash = best_response(pos2)
-    
-    results[method_name] = {
-        'supporter_1': res['s1'],
-        'supporter_2': res['s2'],
-        'position_1': pos1,
-        'position_2': pos2,
-        'nash_equilibrium': nash
-    }
-    print(f"\n{method_name}:")
-    print(f"  Supporter Firm 1: {res['s1']:.3f}")
-    print(f"  Supporter Firm 2: {res['s2']:.3f}")
-    print(f"  Nash Equilibrium: {nash:.3f}  (Paper 1 predicts: 0.5)")
+for name, fn in methods.items():
+    seed1 = fn(G, budget=1)
+    seed2 = fn(G, budget=1, exclude=set(seed1))   # ← THE FIX
 
-# ── Plot supporters over levels (like Paper 1's Fig 7) ──────────
-plt.figure(figsize=(10, 4))
-for i, (mname, r) in enumerate(results.items()):
-    plt.bar(i*3,   r['supporter_1'], color='red',  alpha=0.7, label='Firm 1' if i==0 else '')
-    plt.bar(i*3+1, r['supporter_2'], color='blue', alpha=0.7, label='Firm 2' if i==0 else '')
-    plt.text(i*3+0.5, max(r['supporter_1'], r['supporter_2'])+0.01, 
-             mname, ha='center', fontsize=10)
+    r = run_icm_pairwise(G, seed1, seed2, num_runs=30)
+    diff = abs(r['s1'] - r['s2'])
+    eq = "YES ✓" if diff < MARGIN else "NO ✗"
+    results[name] = r
+    print(f"{name:<6} {r['s1']:>8.3f} {r['s2']:>8.3f} {diff:>10.3f} {eq:>12}")
 
-plt.xlabel("Seed Selection Method")
-plt.ylabel("Fraction of Supporters")
-plt.title("Baseline Replication of Paper 1 (Pairwise ICM)")
-plt.legend()
+print("\nPaper 1 prediction: both firms ~equal supporters (Nash Eq at 0.5)")
+
+# ── Plot ──────────────────────────────────────────────────────────
+fig, ax = plt.subplots(figsize=(8, 5))
+x = np.arange(len(results))
+w = 0.35
+names = list(results.keys())
+
+ax.bar(x - w/2, [results[n]['s1'] for n in names],
+       w, label='Firm 1', color='crimson', alpha=0.8)
+ax.bar(x + w/2, [results[n]['s2'] for n in names],
+       w, label='Firm 2', color='steelblue', alpha=0.8)
+ax.axhline(0.5, color='gray', linestyle='--', alpha=0.5,
+           label='Nash Eq target (0.5)')
+ax.set_xticks(x)
+ax.set_xticklabels(names, fontsize=12)
+ax.set_ylabel("Fraction of Supporters", fontsize=12)
+ax.set_title("Phase 1 — Pairwise ICM Baseline (Paper 1 Replica)", fontsize=13)
+ax.legend()
+ax.set_ylim(0, 0.8)
 plt.tight_layout()
-plt.savefig("output/phase1_baseline_results.png", dpi=150)
+plt.savefig("output/phase1_baseline.png", dpi=150)
 plt.show()
-print("\n✓ Phase 1 complete — baseline replicated!")
+print("\n✓ Phase 1 complete!")
