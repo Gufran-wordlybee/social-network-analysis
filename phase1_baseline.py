@@ -92,8 +92,7 @@ methods = {
 
 MARGIN = 0.05
 results = {}
-print(f"\n{'Method':<6} {'Firm1':>8} {'Firm2':>8} {'|F1-F2|':>10} {'Nash Eq?':>12}")
-print("-" * 50)
+
 
 for name, fn in methods.items():
     seed1 = fn(G, budget=1)
@@ -103,7 +102,7 @@ for name, fn in methods.items():
     diff = abs(r['s1'] - r['s2'])
     eq = "YES ✓" if diff < MARGIN else "NO ✗"
     results[name] = r
-    print(f"{name:<6} {r['s1']:>8.3f} {r['s2']:>8.3f} {diff:>10.3f} {eq:>12}")
+
 
 print("\nPaper 1 prediction: both firms ~equal supporters (Nash Eq at 0.5)")
 
@@ -128,4 +127,12 @@ ax.set_ylim(0, 0.8)
 plt.tight_layout()
 plt.savefig("output/phase1_baseline.png", dpi=150)
 plt.show()
-print("\n✓ Phase 1 complete!")
+
+"""
+just simulation of sir's baseline model
+we are not proving nash equillibrium here
+we are just checking, showing if its exist or not
+sir was able to prove 0.5 in his paper, may be we have done the coding wrongly  
+basically my code is saying that if firm1 have selected x than firm 2 will not select x
+and x is lets say 1000 connec and firm2 selected with 700.. huge gap.. thats reflecting in the code also
+"""

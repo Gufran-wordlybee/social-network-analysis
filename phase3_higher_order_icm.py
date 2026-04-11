@@ -100,4 +100,18 @@ print(f"{'Pairwise (Paper 1)':<25} {r_pair['s1']:>8.3f} "
 print(f"{'HO-ICM λ₂=0.35 (Ours)':<25} {r_ho['s1']:>8.3f} "
       f"{r_ho['s2']:>8.3f} {abs(r_ho['s1']-r_ho['s2']):>10.3f}")
 
-print("\n✓ Phase 3 complete!")
+"""
+1st part : showing results of basline exaclty
+2nd part : inducing higher order interacn
+we have assumed lambda as 0.35, which means
+
+Imagine three people: A, B, C — they form a triangle (2-simplex) in your simplicial complex.
+Now suppose:
+A is already spreading Firm 1's information
+B is already spreading Firm 1's information
+C is uninformed (state = 0)
+Because ALL other members of C's triangle are already active for Firm 1, C now feels group pressure.
+λ₂ = the probability that C gives in to that group pressure and joins Firm 1.
+
+wea are just comparing here
+"""
